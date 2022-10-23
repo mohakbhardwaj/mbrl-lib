@@ -10,6 +10,7 @@ import torch
 import mbrl.algorithms.mbpo as mbpo
 import mbrl.algorithms.pets as pets
 import mbrl.algorithms.planet as planet
+import mbrl.algorithms.offline_rl.offline_mbpo as offline_mbpo
 import mbrl.util.env
 
 
@@ -25,6 +26,9 @@ def run(cfg: omegaconf.DictConfig):
         return mbpo.train(env, test_env, term_fn, cfg)
     if cfg.algorithm.name == "planet":
         return planet.train(env, cfg)
+    if cfg.algorithm.name == "offline_mbpo":
+        test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
+        return offline_mbpo.train(env, test_env, term_fn, cfg)
 
 
 if __name__ == "__main__":
