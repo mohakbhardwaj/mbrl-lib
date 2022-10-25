@@ -8,3 +8,8 @@ EVAL_LOG_FORMAT = [
     ("env_step", "S", "int"),
     ("episode_reward", "R", "float"),
 ]
+
+OFFLINE_EVAL_LOG_FORMAT = [
+    ("num_update_steps", "S", "int"),
+    ("episode_reward", "R", "float"),
+]

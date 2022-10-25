@@ -22,8 +22,8 @@ import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 
-MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
-    ("epoch", "E", "int"),
+MBPO_LOG_FORMAT = mbrl.constants.OFFLINE_EVAL_LOG_FORMAT + [
+    # ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
 ]
 
@@ -178,12 +178,14 @@ def train(
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
+    # mohak: removing freq_train_model from rollout batch size since model is trained
+    # only at the begining.
     rollout_batch_size = (
-        cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
+        cfg.overrides.effective_model_rollouts_per_step #* cfg.algorithm.freq_train_model
     )
-    trains_per_epoch = int(
-        np.ceil(cfg.overrides.epoch_length / cfg.overrides.freq_train_model)
-    )
+    # trains_per_epoch = int(
+    #     np.ceil(cfg.overrides.epoch_length / cfg.overrides.freq_train_model)
+    # )
     updates_made = 0
     num_steps = 0
     model_env = mbrl.models.ModelEnv(
@@ -217,7 +219,7 @@ def train(
                 *(cfg.overrides.rollout_schedule + [epoch + 1])
             )
         )
-        sac_buffer_capacity = rollout_length * rollout_batch_size * trains_per_epoch
+        sac_buffer_capacity = rollout_length * rollout_batch_size #* trains_per_epoch
         #TODO (mohak): Figure out equivalent value as online case maybe?
         sac_buffer_capacity *= cfg.overrides.num_steps_to_retain_sac_buffer #num_epochs_to_retain_sac_buffer
         sac_buffer = maybe_replace_sac_buffer(
@@ -295,7 +297,8 @@ def train(
                 {
                     # "epoch": epoch,
                     # "env_step": env_steps,
-                    "update_step": num_steps,
+                    "num_update_steps": num_steps,
+                    # "update_step": num_steps,
                     "episode_reward": avg_reward,
                     "rollout_length": rollout_length,
                 },
@@ -307,6 +310,7 @@ def train(
                     ckpt_path=os.path.join(work_dir, "sac.pth")
                 )
             # epoch += 1
+        num_steps += 1
 
             # env_steps += 1
             # obs = next_obs
