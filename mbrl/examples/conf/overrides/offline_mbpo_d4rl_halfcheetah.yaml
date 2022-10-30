@@ -1,8 +1,10 @@
 # @package _group_
-env: "gym___HalfCheetah-v2"
+env: "d4rl___halfcheetah-expert-v2"
 term_fn: "no_termination"
+# pretrained_model_dir: "/home/mohak/workspace/mbrl-lib/exp/offline_mbpo/default/d4rl___halfcheetah-expert-v2/2022.10.30/115425"
+pretrained_model_dir: null
 
-num_steps: 2000 #400000
+num_steps: 100000 #400000
 agent_eval_freq: 100
 num_elites: 5
 patience: 5
@@ -10,12 +12,12 @@ model_lr: 0.001
 model_wd: 0.00001
 model_batch_size: 256
 validation_ratio: 0.2
-# freq_train_model: 250
 effective_model_rollouts_per_step: 400
-rollout_schedule: [20, 150, 1, 1]
-num_sac_updates_per_step: 10
-sac_updates_every_steps: 1
-num_steps_to_retain_sac_buffer: 1
+# rollout_schedule: [20, 150, 1, 1]
+rollout_length: 1
+num_sac_updates_per_step: 1 #10
+# sac_updates_every_steps: 1
+num_steps_to_retain_sac_buffer: 10
 
 sac_gamma: 0.99
 sac_tau: 0.005

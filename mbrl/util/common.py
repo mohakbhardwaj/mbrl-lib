@@ -412,6 +412,13 @@ def train_model_and_save_model_and_data(
         model.save(str(work_dir))
         replay_buffer.save(work_dir)
 
+def load_pretrained_model(env, cfg):
+    obs_shape = env.observation_space.shape
+    act_shape = env.action_space.shape
+    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+    model_dir = cfg.overrides.pretrained_model_dir
+    dynamics_model.load(model_dir)
+    return dynamics_model
 
 def rollout_model_env(
     model_env: mbrl.models.ModelEnv,

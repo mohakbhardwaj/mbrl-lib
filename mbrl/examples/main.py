@@ -16,7 +16,7 @@ import mbrl.util.env
 
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
-    env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
+    env, term_fn, reward_fn, initial_buffer = mbrl.util.env.EnvHandler.make_env(cfg)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "pets":
@@ -28,7 +28,8 @@ def run(cfg: omegaconf.DictConfig):
         return planet.train(env, cfg)
     if cfg.algorithm.name == "offline_mbpo":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-        return offline_mbpo.train(env, test_env, term_fn, cfg)
+        # replay_buffer = mbrl.util.datasets.get_env_dataset(cfg)
+        return offline_mbpo.train(env, test_env, initial_buffer, term_fn, cfg)
 
 
 if __name__ == "__main__":

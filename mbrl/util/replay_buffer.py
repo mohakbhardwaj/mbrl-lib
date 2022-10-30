@@ -689,3 +689,6 @@ class ReplayBuffer:
     @property
     def rng(self) -> np.random.Generator:
         return self._rng
+
+    # @staticmethod
+    # def from_d4rl_dataset

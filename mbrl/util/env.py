@@ -14,6 +14,7 @@ import torch
 
 import mbrl.planning
 import mbrl.types
+from mbrl.util.replay_buffer import ReplayBuffer
 
 
 def _get_term_and_reward_fn(
@@ -26,7 +27,6 @@ def _get_term_and_reward_fn(
         reward_fn = getattr(mbrl.env.reward_fns, cfg.overrides.reward_fn)
     else:
         reward_fn = getattr(mbrl.env.reward_fns, cfg.overrides.term_fn, None)
-
     return term_fn, reward_fn
 
 
@@ -45,10 +45,45 @@ def _handle_learned_rewards_and_seed(
 
     return env, reward_fn
 
+def _get_d4rl_dataset(    
+    env: gym.Env,
+    cfg: omegaconf.DictConfig,
+) -> mbrl.util.ReplayBuffer:
+    #TODO (mohak): put this in a different folder so it 
+    # can be used for all algorithms and dataset types
+    dataset = env.get_dataset()
+    num_transitions = dataset["observations"].shape[0]
+    obs_shape = env.observation_space.shape
+    act_shape = env.action_space.shape
+
+    rng = np.random.default_rng(seed=cfg.seed)
+    use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
+    dtype = np.double if use_double_dtype else np.float32
+
+    replay_buffer = ReplayBuffer(
+        capacity=num_transitions,
+        obs_shape=obs_shape,
+        action_shape=act_shape,
+        rng=rng,
+        obs_type=dtype,
+        action_type=dtype,
+        reward_type=dtype,
+    )
+
+    replay_buffer.add_batch(
+        dataset["observations"],
+        dataset["actions"],
+        dataset["next_observations"],
+        dataset["rewards"],
+        dataset["terminals"])
+
+    return replay_buffer
+
 
 def _legacy_make_env(
     cfg: Union[omegaconf.ListConfig, omegaconf.DictConfig],
 ) -> Tuple[gym.Env, mbrl.types.TermFnType, Optional[mbrl.types.RewardFnType]]:
+    dataset = None
     if "dmcontrol___" in cfg.overrides.env:
         import mbrl.third_party.dmc2gym as dmc2gym
 
@@ -58,6 +93,11 @@ def _legacy_make_env(
     elif "gym___" in cfg.overrides.env:
         env = gym.make(cfg.overrides.env.split("___")[1])
         term_fn, reward_fn = _get_term_and_reward_fn(cfg)
+    elif "d4rl___" in cfg.overrides.env:
+        import d4rl
+        env = gym.make(cfg.overrides.env.split("___")[1])
+        term_fn, reward_fn = _get_term_and_reward_fn(cfg)
+        dataset = _get_d4rl_dataset(env, cfg)
     else:
         import mbrl.env.mujoco_envs
 
@@ -96,7 +136,7 @@ def _legacy_make_env(
         )
 
     env, reward_fn = _handle_learned_rewards_and_seed(cfg, env, reward_fn)
-    return env, term_fn, reward_fn
+    return env, term_fn, reward_fn, dataset
 
 
 class Freeze(ABC):
@@ -113,7 +153,7 @@ class EnvHandler(ABC):
     """Abstract base class for handling various gym backends
 
     Subclasses of EnvHandler should define an associated Freeze subclass
-    and override self.freeze with that subclass
+
     """
 
     freeze = Freeze
@@ -141,6 +181,7 @@ class EnvHandler(ABC):
             - "dmcontrol___<domain>--<task>": a Deep-Mind Control suite environment
                 with the indicated domain and task (e.g., "dmcontrol___cheetah--run".
             - "gym___<env_name>": a Gym environment (e.g., "gym___HalfCheetah-v2").
+            - "d4rl___<env_name>": a D4RL environment (eg., "d4rl___HalfCheetah-v1").
             - "cartpole_continuous": a continuous version of gym's Cartpole environment.
             - "pets_halfcheetah": the implementation of HalfCheetah used in Chua et al.,
                 PETS paper.

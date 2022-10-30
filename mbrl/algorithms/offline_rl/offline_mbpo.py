@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 import os
-from typing import Optional, Sequence, cast
+from typing import Any, Optional, Sequence, Type, cast
 
 import gym
 import hydra.utils
@@ -28,23 +28,18 @@ MBPO_LOG_FORMAT = mbrl.constants.OFFLINE_EVAL_LOG_FORMAT + [
 ]
 
 
-def populate_buffer_from_offline_data(    
-    env: gym.Env,
-    cfg: omegaconf.DictConfig,
-    replay_buffer: mbrl.util.ReplayBuffer,
-    agent: Optional[SACAgent] = None,
-):
-    #TODO (mohak): put this in a different folder so it 
-    # can be used for all algorithms and dataset types
 
-    random_explore = cfg.algorithm.random_initial_explore
-    mbrl.util.common.rollout_agent_trajectories(
-        env,
-        cfg.algorithm.initial_exploration_steps,
-        mbrl.planning.RandomAgent(env) if random_explore else agent,
-        {} if random_explore else {"sample": True, "batched": False},
-        replay_buffer=replay_buffer,
-    )
+    # random_explore = cfg.algorithm.random_initial_explore
+    # mbrl.util.common.rollout_agent_trajectories(
+    #     env,
+    #     cfg.algorithm.initial_exploration_steps,
+    #     mbrl.planning.RandomAgent(env) if random_explore else agent,
+    #     {} if random_explore else {"sample": True, "batched": False},
+    #     replay_buffer=replay_buffer,
+    # )
+
+
+
 
 
 def rollout_model_and_populate_sac_buffer(
@@ -126,8 +121,11 @@ def maybe_replace_sac_buffer(
 def train(
     env: gym.Env,
     test_env: gym.Env,
+    replay_buffer: mbrl.util.ReplayBuffer,
     termination_fn: mbrl.types.TermFnType,
     cfg: omegaconf.DictConfig,
+    # dynamics_model: Optional[mbrl.models.Model] = None,
+    rng: Optional[np.random.Generator] = None,
     silent: bool = False,
     work_dir: Optional[str] = None,
 ) -> np.float32:
@@ -141,7 +139,6 @@ def train(
     agent = SACAgent(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
-
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
@@ -154,27 +151,46 @@ def train(
     save_video = cfg.get("save_video", False)
     video_recorder = VideoRecorder(work_dir if save_video else None)
 
-    rng = np.random.default_rng(seed=cfg.seed)
+    if rng is None:
+        rng = np.random.default_rng(seed=cfg.seed)
     torch_generator = torch.Generator(device=cfg.device)
     if cfg.seed is not None:
         torch_generator.manual_seed(cfg.seed)
 
-    # -------------- Create initial overrides. dataset --------------
     dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+    pretrained_model_dir = cfg.overrides.get("pretrained_model_dir", None)
+
+    # --------------- Train dynamics model if pre-trained model not provided -----------------
+    if pretrained_model_dir is None:
+        model_trainer = mbrl.models.ModelTrainer(
+            dynamics_model,
+            optim_lr=cfg.overrides.model_lr,
+            weight_decay=cfg.overrides.model_wd,
+            logger=None if silent else logger,
+        )
+
+        mbrl.util.common.train_model_and_save_model_and_data(
+            dynamics_model,
+            model_trainer,
+            cfg.overrides,
+            replay_buffer,
+            work_dir=work_dir,
+        )
+    else:
+        print('Loading pre-trained model')
+        dynamics_model.load(pretrained_model_dir)
+
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
-    replay_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
-
-    # -------------- Add offline data to replay buffer for training --------------
-    populate_buffer_from_offline_data(env, cfg, replay_buffer, agent)
+    # replay_buffer = mbrl.util.common.create_replay_buffer(
+    #     cfg,
+    #     obs_shape,
+    #     act_shape,
+    #     rng=rng,
+    #     obs_type=dtype,
+    #     action_type=dtype,
+    #     reward_type=dtype,
+    # )
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -191,34 +207,20 @@ def train(
     model_env = mbrl.models.ModelEnv(
         env, dynamics_model, termination_fn, None, generator=torch_generator
     )
-    model_trainer = mbrl.models.ModelTrainer(
-        dynamics_model,
-        optim_lr=cfg.overrides.model_lr,
-        weight_decay=cfg.overrides.model_wd,
-        logger=None if silent else logger,
-    )
 
-    # --------------- Model Training -----------------
-    # ----Train model using offline dataset only----
-    mbrl.util.common.train_model_and_save_model_and_data(
-        dynamics_model,
-        model_trainer,
-        cfg.overrides,
-        replay_buffer,
-        work_dir=work_dir,
-    )
     best_eval_reward = -np.inf
-    epoch = 0
+    # epoch = 0
     sac_buffer = None
     # mohak: changing env_step to num_steps since there are no
     # environment steps in offline RL
     while num_steps < cfg.overrides.num_steps:
         #TODO (mohak): Figure out rollout length for offline RL case
-        rollout_length = int(
-            mbrl.util.math.truncated_linear(
-                *(cfg.overrides.rollout_schedule + [epoch + 1])
-            )
-        )
+        # rollout_length = int(
+        #     mbrl.util.math.truncated_linear(
+        #         *(cfg.overrides.rollout_schedule + [epoch + 1])
+        #     )
+        # )
+        rollout_length = cfg.overrides.rollout_length
         sac_buffer_capacity = rollout_length * rollout_batch_size #* trains_per_epoch
         #TODO (mohak): Figure out equivalent value as online case maybe?
         sac_buffer_capacity *= cfg.overrides.num_steps_to_retain_sac_buffer #num_epochs_to_retain_sac_buffer
@@ -304,7 +306,7 @@ def train(
                 },
             )
             if avg_reward > best_eval_reward:
-                video_recorder.save(f"{epoch}.mp4")
+                video_recorder.save(f"{num_steps}.mp4")
                 best_eval_reward = avg_reward
                 agent.sac_agent.save_checkpoint(
                     ckpt_path=os.path.join(work_dir, "sac.pth")
