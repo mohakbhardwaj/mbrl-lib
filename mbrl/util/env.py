@@ -45,11 +45,11 @@ def _handle_learned_rewards_and_seed(
 
     return env, reward_fn
 
-def _get_d4rl_dataset(    
+def _get_d4rl_dataset(
     env: gym.Env,
     cfg: omegaconf.DictConfig,
 ) -> mbrl.util.ReplayBuffer:
-    #TODO (mohak): put this in a different folder so it 
+    #TODO (mohak): put this in a different folder so it
     # can be used for all algorithms and dataset types
     dataset = env.get_dataset()
     num_transitions = dataset["observations"].shape[0]
@@ -75,7 +75,8 @@ def _get_d4rl_dataset(
         dataset["actions"],
         dataset["next_observations"],
         dataset["rewards"],
-        dataset["terminals"])
+        dataset["terminals"],
+        dataset["timeouts"])
 
     return replay_buffer
 
