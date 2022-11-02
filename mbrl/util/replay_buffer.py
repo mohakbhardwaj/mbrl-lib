@@ -449,6 +449,7 @@ class ReplayBuffer:
         self.action = np.empty((capacity, *action_shape), dtype=action_type)
         self.reward = np.empty(capacity, dtype=reward_type)
         self.done = np.empty(capacity, dtype=bool)
+        self.timeout = np.empty(capacity, dtype=bool)
 
         if rng is None:
             self._rng = np.random.default_rng()
@@ -550,6 +551,7 @@ class ReplayBuffer:
         next_obs: np.ndarray,
         reward: np.ndarray,
         done: np.ndarray,
+        timeout: np.ndarray,
     ):
         """Adds a transition (s, a, s', r, done) to the replay buffer.
 
@@ -574,6 +576,7 @@ class ReplayBuffer:
             np.copyto(self.reward[buffer_slice], reward[batch_slice])
             np.copyto(self.next_obs[buffer_slice], next_obs[batch_slice])
             np.copyto(self.done[buffer_slice], done[batch_slice])
+            np.copyto(self.timeout[buffer_slice], timeout[batch_slice])
 
         _batch_start = 0
         buffer_end = self.cur_idx + len(obs)
@@ -624,6 +627,7 @@ class ReplayBuffer:
         action = self.action[indices]
         reward = self.reward[indices]
         done = self.done[indices]
+        timeout = self.timeout[indices]
 
         return TransitionBatch(obs, action, next_obs, reward, done)
 
@@ -645,6 +649,7 @@ class ReplayBuffer:
             action=self.action[: self.num_stored],
             reward=self.reward[: self.num_stored],
             done=self.done[: self.num_stored],
+            timeout=self.timeout[: self.num_stored],
             trajectory_indices=self.trajectory_indices or [],
         )
 
@@ -662,6 +667,7 @@ class ReplayBuffer:
         self.action[:num_stored] = data["action"]
         self.reward[:num_stored] = data["reward"]
         self.done[:num_stored] = data["done"]
+        self.timeout[:num_stored] = data["timeout"]
         self.num_stored = num_stored
         self.cur_idx = self.num_stored % self.capacity
         if "trajectory_indices" in data and len(data["trajectory_indices"]):

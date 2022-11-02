@@ -19,6 +19,8 @@ num_sac_updates_per_step: 1 #10
 # sac_updates_every_steps: 1
 num_steps_to_retain_sac_buffer: 10
 
+bc_num_steps: 10000
+
 sac_gamma: 0.99
 sac_tau: 0.005
 sac_alpha: 0.2
