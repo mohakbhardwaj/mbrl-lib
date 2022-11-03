@@ -51,7 +51,6 @@ def rollout_model_and_populate_sac_buffer(
     rollout_horizon: int,
     batch_size: int,
 ):
-
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
     model_state = model_env.reset(
@@ -160,6 +159,26 @@ def train(
     dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
     pretrained_model_dir = cfg.overrides.get("pretrained_model_dir", None)
 
+    # --------------- Pretrain SAC Agent by Behavior Cloning -----------------
+    from .bc import BehaviorPretraining
+    from .bc_util import tuple_to_traj_data
+    vf = lambda observations : torch.zeros(observations.shape[0], device=observations.device)  # empty
+    qf = lambda observations, actions: sum(agent.sac_agent.critic(observations, actions)).squeeze()/2.0  # two q networks
+    policy = lambda observations : agent.sac_agent.policy(observations)[0]
+    networks = dict(policy=policy, qf=qf, vf=vf)
+    optimizers  = [agent.sac_agent.critic_optim, agent.sac_agent.policy_optim]
+    tuple_data = dict(observations=replay_buffer.obs,
+                      next_observations=replay_buffer.next_obs,
+                      actions=replay_buffer.action,
+                      rewards=replay_buffer.reward,
+                      terminals=replay_buffer.done,
+                      timeouts=replay_buffer.timeout)
+    traj_data = tuple_to_traj_data(tuple_data)
+    bp = BehaviorPretraining(networks, optimizers, discount=cfg.overrides.sac_gamma)
+    bp.train(traj_data, n_steps=cfg.overrides.bc_num_steps)
+    from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update
+    hard_update(agent.sac_agent.critic_target, agent.sac_agent.critic)
+
     # --------------- Train dynamics model if pre-trained model not provided -----------------
     if pretrained_model_dir is None:
         model_trainer = mbrl.models.ModelTrainer(
@@ -249,6 +268,7 @@ def train(
 
         # --------- Rollout new model and store imagined trajectories --------
         # Batch all rollouts for the next freq_train_model steps together
+        # TODO should sample from the initial states
         rollout_model_and_populate_sac_buffer(
             model_env,
             replay_buffer,
@@ -290,7 +310,7 @@ def train(
 
         # ------ Epoch ended (evaluate and save model) ------
         # if (env_steps + 1) % cfg.overrides.epoch_length == 0:
-        if num_steps % cfg.overrides.agent_eval_freq == 0: 
+        if num_steps % cfg.overrides.agent_eval_freq == 0:
             avg_reward = evaluate(
                 test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder
             )

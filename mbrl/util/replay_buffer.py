@@ -522,6 +522,7 @@ class ReplayBuffer:
         next_obs: np.ndarray,
         reward: float,
         done: bool,
+        timeout: bool = False,
     ):
         """Adds a transition (s, a, s', r, done) to the replay buffer.
 
@@ -551,7 +552,7 @@ class ReplayBuffer:
         next_obs: np.ndarray,
         reward: np.ndarray,
         done: np.ndarray,
-        timeout: np.ndarray,
+        timeout: np.ndarray = None,
     ):
         """Adds a transition (s, a, s', r, done) to the replay buffer.
 
@@ -567,6 +568,8 @@ class ReplayBuffer:
             reward (float): the batch of rewards at time t + 1.
             done (bool): a batch of booleans terminal indicators.
         """
+        if timeout is None:
+            timeout = np.zeros_like(done)
 
         def copy_from_to(buffer_start, batch_start, how_many):
             buffer_slice = slice(buffer_start, buffer_start + how_many)
